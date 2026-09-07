@@ -96,10 +96,120 @@ function render() {
   el.moves.textContent = String(state.moves);
 }
 
-function boot() {
-  state = game.newGame();
+let undoStack = [];
+let lastTap = { key: '', time: 0 };
+
+function refFromEvent(event) {
+  const cardNode = event.target.closest('.card');
+  if (cardNode) {
+    return {
+      pile: cardNode.dataset.pile,
+      index: cardNode.dataset.index != null ? Number(cardNode.dataset.index) : undefined,
+      cardIndex: cardNode.dataset.cardIndex != null ? Number(cardNode.dataset.cardIndex) : undefined,
+    };
+  }
+  const pileNode = event.target.closest('.pile');
+  if (pileNode) {
+    return {
+      pile: pileNode.dataset.pile,
+      index: pileNode.dataset.index != null ? Number(pileNode.dataset.index) : undefined,
+    };
+  }
+  return null;
+}
+
+function shake(ref) {
+  const node =
+    ref.pile === 'tableau' ? el.tableau[ref.index]
+    : ref.pile === 'foundation' ? el.foundations[ref.index]
+    : ref.pile === 'waste' ? el.waste
+    : el.stock;
+  if (!node) return;
+  node.classList.remove('shake');
+  void node.offsetWidth; // restart the animation
+  node.classList.add('shake');
+}
+
+function commit(next) {
+  undoStack.push(state);
+  if (undoStack.length > 200) undoStack.shift();
+  state = next;
+  afterChange();
+}
+
+function afterChange() {
+  selection = null;
+  el.undo.disabled = undoStack.length === 0;
   render();
 }
+
+function doDraw() {
+  const next = game.draw(state);
+  if (next) commit(next);
+  else shake({ pile: 'stock' });
+}
+
+function onBoardClick(event) {
+  const ref = refFromEvent(event);
+  if (!ref) return;
+
+  if (ref.pile === 'stock') {
+    selection = null;
+    doDraw();
+    return;
+  }
+
+  // Double tap sends a single card home.
+  const key = `${ref.pile}:${ref.index}:${ref.cardIndex}`;
+  const now = Date.now();
+  if (key === lastTap.key && now - lastTap.time < 350) {
+    lastTap = { key: '', time: 0 };
+    const next = game.autoToFoundation(state, ref);
+    if (next) {
+      commit(next);
+      return;
+    }
+  }
+  lastTap = { key, time: now };
+
+  if (selection) {
+    const next = game.applyMove(state, selection, { pile: ref.pile, index: ref.index });
+    if (next) {
+      commit(next);
+      return;
+    }
+    if (sameRef(selection, ref)) {
+      selection = null;
+      render();
+      return;
+    }
+  }
+
+  if (game.grabbed(state, ref).length > 0) {
+    selection = ref;
+    render();
+  } else {
+    selection = null;
+    render();
+    shake(ref);
+  }
+}
+
+function undo() {
+  if (undoStack.length === 0) return;
+  state = undoStack.pop();
+  afterChange();
+}
+
+function boot() {
+  state = game.newGame();
+  undoStack = [];
+  afterChange();
+}
+
+el.board.addEventListener('click', onBoardClick);
+el.undo.addEventListener('click', undo);
+el.newGame.addEventListener('click', boot);
 
 boot();
 window.addEventListener('resize', () => render());
