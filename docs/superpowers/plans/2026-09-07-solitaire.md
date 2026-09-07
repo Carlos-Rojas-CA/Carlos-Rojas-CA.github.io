@@ -1850,7 +1850,6 @@ git commit -m "feat(solitaire): add board markup and responsive card styling"
 
 ```js
 import * as game from './game.js';
-import * as store from './storage.js';
 
 const RANK_LABEL = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
 const GLYPH = { s: '♠', h: '♥', d: '♦', c: '♣' };
@@ -2156,9 +2155,15 @@ git commit -m "feat(solitaire): add tap-to-move interaction and undo"
 - Consumes: `store.loadStats`, `store.saveStats`, `store.loadGame`, `store.saveGame`, `store.clearGame`, `store.recordWin`, `store.recordPlayed`, `store.currentStreak`, `store.todayStr` (Tasks 5–6); `game.canAutoFinish`, `game.autoFinishSteps` (Task 4).
 - Produces: no new exports. This task completes `ui.js`.
 
-- [ ] **Step 1: Extend the element lookup**
+- [ ] **Step 1: Add the storage import and extend the element lookup**
 
-In `solitaire/ui.js`, add these entries to the `el` object literal, after `streak`:
+In `solitaire/ui.js`, add the storage import below the existing `game` import:
+
+```js
+import * as store from './storage.js';
+```
+
+Then add these entries to the `el` object literal, after `streak`:
 
 ```js
   statsBtn: document.getElementById('stats-btn'),
@@ -2171,7 +2176,9 @@ In `solitaire/ui.js`, add these entries to the `el` object literal, after `strea
 
 - [ ] **Step 2: Add the clock, stats and win handling**
 
-Still in `solitaire/ui.js`, **replace** the existing `afterChange`, `undo` and `boot` functions and the trailing block of event listeners with everything below. `commit`, `doDraw`, `onBoardClick`, `refFromEvent`, `shake` and the render functions stay exactly as they are.
+Still in `solitaire/ui.js`, **delete** three things: the existing `afterChange` function, the existing `undo` function, and the trailing block at the end of the file (the `boot` function, the five `addEventListener` calls, the `boot();` call and the `resize` listener). Then **append** the block below to the end of the file.
+
+Everything else stays exactly as it is: `commit`, `doDraw`, `onBoardClick`, `refFromEvent`, `shake`, `sameRef`, the `let undoStack`/`let lastTap` declarations, and all the render functions. Function declarations hoist, so `commit` calling the new `afterChange` defined further down the file works correctly.
 
 ```js
 let stats = store.emptyStats();
