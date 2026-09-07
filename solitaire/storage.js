@@ -59,3 +59,79 @@ export function recordWin(stats, today, timeMs, moves) {
 export function recordPlayed(stats) {
   return { ...stats, played: stats.played + 1 };
 }
+
+const GAME_KEY = 'solitaire.v1.game';
+const STATS_KEY = 'solitaire.v1.stats';
+const MAX_UNDO_SAVED = 50;
+
+export function makeMemoryStore() {
+  const map = new Map();
+  return {
+    getItem: (k) => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => { map.set(k, String(v)); },
+    removeItem: (k) => { map.delete(k); },
+  };
+}
+
+let fallbackStore = null;
+
+// Safari in private browsing exposes localStorage but throws on setItem, so we
+// probe rather than feature-detect, and degrade to memory instead of crashing.
+function defaultStore() {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('solitaire.v1.probe', '1');
+      localStorage.removeItem('solitaire.v1.probe');
+      return localStorage;
+    }
+  } catch (e) {
+    /* fall through to memory */
+  }
+  if (!fallbackStore) fallbackStore = makeMemoryStore();
+  return fallbackStore;
+}
+
+function readJson(key, fallback, store) {
+  try {
+    const raw = store.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed == null ? fallback : parsed;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function writeJson(key, value, store) {
+  try {
+    store.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    /* quota exceeded or storage unavailable -- play continues, nothing saved */
+  }
+}
+
+export function loadStats(store = defaultStore()) {
+  return { ...emptyStats(), ...readJson(STATS_KEY, {}, store) };
+}
+
+export function saveStats(stats, store = defaultStore()) {
+  writeJson(STATS_KEY, stats, store);
+}
+
+export function loadGame(store = defaultStore()) {
+  const saved = readJson(GAME_KEY, null, store);
+  if (!saved || !saved.state) return null;
+  return { state: saved.state, undo: saved.undo || [] };
+}
+
+export function saveGame(state, undo, store = defaultStore()) {
+  writeJson(GAME_KEY, { state, undo: undo.slice(-MAX_UNDO_SAVED) }, store);
+}
+
+export function clearGame(store = defaultStore()) {
+  try {
+    store.removeItem(GAME_KEY);
+  } catch (e) {
+    /* nothing to do */
+  }
+}
