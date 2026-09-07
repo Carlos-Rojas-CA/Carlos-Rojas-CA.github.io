@@ -50,3 +50,100 @@ export function newGame(rng = Math.random) {
     won: false,
   };
 }
+
+export function clone(state) {
+  return {
+    stock: state.stock.map((c) => ({ ...c })),
+    waste: state.waste.map((c) => ({ ...c })),
+    foundations: state.foundations.map((p) => p.map((c) => ({ ...c }))),
+    tableau: state.tableau.map((p) => p.map((c) => ({ ...c }))),
+    moves: state.moves,
+    elapsedMs: state.elapsedMs,
+    won: state.won,
+  };
+}
+
+function pileOf(state, ref) {
+  if (!ref) return null;
+  if (ref.pile === 'tableau') return state.tableau[ref.index] || null;
+  if (ref.pile === 'foundation') return state.foundations[ref.index] || null;
+  if (ref.pile === 'waste') return state.waste;
+  if (ref.pile === 'stock') return state.stock;
+  return null;
+}
+
+// True when `card` may be placed on top of `onto` in the tableau.
+function stacksOn(card, onto) {
+  return onto.rank === card.rank + 1 && isRed(onto) !== isRed(card);
+}
+
+export function grabbed(state, from) {
+  const pile = pileOf(state, from);
+  if (!pile || pile.length === 0) return [];
+  if (from.pile === 'stock') return [];
+
+  if (from.pile === 'tableau') {
+    const start = from.cardIndex == null ? pile.length - 1 : from.cardIndex;
+    if (start < 0 || start >= pile.length) return [];
+    const run = pile.slice(start);
+    if (!run.every((c) => c.faceUp)) return [];
+    for (let i = 0; i + 1 < run.length; i++) {
+      if (!stacksOn(run[i + 1], run[i])) return [];
+    }
+    return run;
+  }
+
+  // Waste and foundations expose only their top card.
+  return [pile[pile.length - 1]];
+}
+
+export function canMove(state, from, to) {
+  const run = grabbed(state, from);
+  if (run.length === 0) return false;
+  if (from.pile === to.pile && from.index === to.index) return false;
+
+  const head = run[0];
+
+  if (to.pile === 'foundation') {
+    if (run.length !== 1) return false;
+    const pile = state.foundations[to.index];
+    if (!pile) return false;
+    if (pile.length === 0) return head.rank === 1 && SUITS.indexOf(head.suit) === to.index;
+    const top = pile[pile.length - 1];
+    return top.suit === head.suit && head.rank === top.rank + 1;
+  }
+
+  if (to.pile === 'tableau') {
+    const pile = state.tableau[to.index];
+    if (!pile) return false;
+    if (pile.length === 0) return head.rank === 13;
+    const top = pile[pile.length - 1];
+    if (!top.faceUp) return false;
+    return stacksOn(head, top);
+  }
+
+  return false;
+}
+
+export function isWon(state) {
+  return state.foundations.reduce((n, p) => n + p.length, 0) === 52;
+}
+
+export function applyMove(state, from, to) {
+  if (!canMove(state, from, to)) return null;
+  const count = grabbed(state, from).length;
+  const next = clone(state);
+  const src = pileOf(next, from);
+  const dst = pileOf(next, to);
+  const moving = src.splice(src.length - count, count);
+  for (const c of moving) {
+    c.faceUp = true;
+    dst.push(c);
+  }
+  if (from.pile === 'tableau' && src.length > 0 && !src[src.length - 1].faceUp) {
+    src[src.length - 1].faceUp = true;
+  }
+  next.moves += 1;
+  next.won = isWon(next);
+  return next;
+}
