@@ -389,3 +389,11 @@ document.addEventListener('visibilitychange', () => {
 
 boot();
 window.addEventListener('resize', () => render());
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {
+      /* offline support is optional; the game works without it */
+    });
+  });
+}
