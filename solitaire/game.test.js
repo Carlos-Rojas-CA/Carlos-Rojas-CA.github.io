@@ -370,3 +370,73 @@ test('draw increments the move counter', () => {
   s.stock = [card(5, 'h', false)];
   assertEqual(game.draw(s).moves, 1, 'moves:');
 });
+section('auto moves');
+
+test('autoToFoundation sends a card to its own suit foundation', () => {
+  const s = emptyState();
+  s.foundations[1] = [card(1, 'h')];
+  s.tableau[0] = [card(2, 'h')];
+  const next = game.autoToFoundation(s, { pile: 'tableau', index: 0, cardIndex: 0 });
+  assertEqual(next.foundations[1].map((c) => c.rank), [1, 2], 'foundation:');
+  assertEqual(next.tableau[0].length, 0, 'source emptied:');
+});
+
+test('autoToFoundation returns null when no foundation accepts the card', () => {
+  const s = emptyState();
+  s.tableau[0] = [card(5, 'h')];
+  assertEqual(game.autoToFoundation(s, { pile: 'tableau', index: 0, cardIndex: 0 }), null, 'null:');
+});
+
+test('autoToFoundation refuses a multi-card run', () => {
+  const s = emptyState();
+  s.foundations[0] = [card(1, 's')];
+  s.tableau[0] = [card(2, 's'), card(1, 'h')];
+  assertEqual(game.autoToFoundation(s, { pile: 'tableau', index: 0, cardIndex: 0 }), null, 'null:');
+});
+
+test('canAutoFinish is false while any tableau card is face down', () => {
+  const s = emptyState();
+  s.tableau[0] = [card(5, 'h', false), card(4, 's')];
+  assert(!game.canAutoFinish(s), 'blocked by face-down card');
+});
+
+test('canAutoFinish is true with a fully face-up tableau even with cards left in stock', () => {
+  const s = emptyState();
+  s.tableau[0] = [card(5, 'h')];
+  s.stock = [card(9, 'c', false)];
+  s.waste = [card(3, 'd')];
+  assert(game.canAutoFinish(s), 'unlimited redeals make every card reachable');
+});
+
+test('canAutoFinish is false for an already-won game', () => {
+  const s = emptyState();
+  for (let i = 0; i < 4; i++) {
+    s.foundations[i] = Array.from({ length: 13 }, (_, k) => card(k + 1, game.SUITS[i]));
+  }
+  s.won = true;
+  assert(!game.canAutoFinish(s), 'nothing left to finish');
+});
+
+test('autoFinishSteps drives a revealed board to a win', () => {
+  const s = emptyState();
+  // Every card face up, split between one tableau column and the stock.
+  for (let i = 0; i < 4; i++) {
+    const suit = game.SUITS[i];
+    for (let rank = 13; rank >= 1; rank--) {
+      if (rank > 6) s.tableau[i].push(card(rank, suit));
+      else s.stock.push(card(rank, suit, false));
+    }
+  }
+  const steps = game.autoFinishSteps(s);
+  assert(steps.length > 0, 'produced steps');
+  assert(game.isWon(steps[steps.length - 1]), 'final step is a win');
+  assert(steps[steps.length - 1].won, 'won flag set');
+});
+
+test('autoFinishSteps does not mutate the input state', () => {
+  const s = emptyState();
+  s.tableau[0] = [card(1, 'h')];
+  const before = JSON.stringify(s);
+  game.autoFinishSteps(s);
+  assertEqual(JSON.stringify(s), before, 'unchanged:');
+});

@@ -166,3 +166,46 @@ export function draw(state) {
   next.moves += 1;
   return next;
 }
+
+export function autoToFoundation(state, from) {
+  const run = grabbed(state, from);
+  if (run.length !== 1) return null;
+  return applyMove(state, from, { pile: 'foundation', index: SUITS.indexOf(run[0].suit) });
+}
+
+export function canAutoFinish(state) {
+  if (isWon(state)) return false;
+  // With unlimited redeals every stock and waste card stays reachable, so a
+  // fully revealed tableau means the game is already mathematically won.
+  return state.tableau.every((pile) => pile.every((c) => c.faceUp));
+}
+
+export function autoFinishSteps(state) {
+  const steps = [];
+  let cur = clone(state);
+  // Each foundation move is one of 52; between them we may cycle the stock.
+  // The bound is generous and exists only to guarantee termination.
+  let guard = 2000;
+  while (!isWon(cur) && guard-- > 0) {
+    const sources = [
+      { pile: 'waste' },
+      ...cur.tableau.map((_, i) => ({ pile: 'tableau', index: i })),
+    ];
+    let moved = false;
+    for (const from of sources) {
+      const next = autoToFoundation(cur, from);
+      if (next) {
+        cur = next;
+        steps.push(cur);
+        moved = true;
+        break;
+      }
+    }
+    if (moved) continue;
+    const drawn = draw(cur);
+    if (!drawn) break;
+    cur = drawn;
+    steps.push(cur);
+  }
+  return steps;
+}
