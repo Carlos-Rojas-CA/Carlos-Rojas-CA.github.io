@@ -138,8 +138,12 @@ the player cycle the stock by hand first would be exactly the tedium
 auto-finish exists to remove. Pressing it animates every remaining card to
 its foundation, drawing from the stock as needed.
 
-Illegal moves give a brief shake animation on the source, no modal, no
-sound.
+Illegal moves give a brief shake animation on the pile that was tapped, no
+modal, no sound. Tapping an unplayable card shakes that card's pile; tapping
+an incompatible destination while holding a selection shakes the destination.
+Shaking whatever the finger landed on is the feedback that reads correctly in
+both cases — the source pile is not the thing at fault when the destination
+is wrong.
 
 ## Stats and the daily streak
 
