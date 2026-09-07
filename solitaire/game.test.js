@@ -320,3 +320,53 @@ test('applyMove sets won when the last card lands', () => {
   const next = game.applyMove(s, { pile: 'waste' }, { pile: 'foundation', index: 3 });
   assert(next.won, 'won flag set');
 });
+
+section('stock and waste');
+
+test('draw moves exactly one card from stock to waste, face up', () => {
+  const s = emptyState();
+  s.stock = [card(5, 'h', false), card(9, 'c', false)];
+  const next = game.draw(s);
+  assertEqual(next.stock.length, 1, 'stock:');
+  assertEqual(next.waste.length, 1, 'waste:');
+  assertEqual(next.waste[0].rank, 9, 'top of stock drawn first:');
+  assert(next.waste[0].faceUp, 'drawn card is face up');
+});
+
+test('draw does not mutate the input state', () => {
+  const s = emptyState();
+  s.stock = [card(5, 'h', false)];
+  game.draw(s);
+  assertEqual(s.stock.length, 1, 'original stock:');
+  assertEqual(s.waste.length, 0, 'original waste:');
+});
+
+test('drawing an empty stock redeals the whole waste face down', () => {
+  const s = emptyState();
+  s.waste = [card(2, 'h'), card(3, 'h'), card(4, 'h')];
+  const next = game.draw(s);
+  assertEqual(next.waste.length, 0, 'waste emptied:');
+  assertEqual(next.stock.length, 3, 'stock refilled:');
+  assert(next.stock.every((c) => !c.faceUp), 'all face down');
+});
+
+test('a redeal preserves the original draw order', () => {
+  const s = emptyState();
+  s.stock = [card(3, 'h', false), card(2, 'h', false)];
+  let cur = game.draw(s);
+  cur = game.draw(cur);
+  assertEqual(cur.waste.map((c) => c.rank), [2, 3], 'first cycle:');
+  cur = game.draw(cur);
+  cur = game.draw(cur);
+  assertEqual(cur.waste.map((c) => c.rank), [2], 'second cycle first draw:');
+});
+
+test('draw returns null when stock and waste are both empty', () => {
+  assertEqual(game.draw(emptyState()), null, 'nothing to draw:');
+});
+
+test('draw increments the move counter', () => {
+  const s = emptyState();
+  s.stock = [card(5, 'h', false)];
+  assertEqual(game.draw(s).moves, 1, 'moves:');
+});

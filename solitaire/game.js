@@ -147,3 +147,22 @@ export function applyMove(state, from, to) {
   next.won = isWon(next);
   return next;
 }
+
+export function draw(state) {
+  if (state.stock.length === 0 && state.waste.length === 0) return null;
+  const next = clone(state);
+  if (next.stock.length > 0) {
+    const card = next.stock.pop();
+    card.faceUp = true;
+    next.waste.push(card);
+  } else {
+    // Unlimited redeals: pour the waste back so the original order repeats.
+    while (next.waste.length > 0) {
+      const card = next.waste.pop();
+      card.faceUp = false;
+      next.stock.push(card);
+    }
+  }
+  next.moves += 1;
+  return next;
+}
