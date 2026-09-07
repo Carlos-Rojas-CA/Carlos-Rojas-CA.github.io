@@ -1,4 +1,5 @@
 import * as game from './game.js';
+import * as store from './storage.js';
 
 const RANK_LABEL = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
 const GLYPH = { s: '♠', h: '♥', d: '♦', c: '♣' };
@@ -16,6 +17,12 @@ const el = {
   timer: document.getElementById('timer'),
   moves: document.getElementById('moves'),
   streak: document.getElementById('streak'),
+  statsBtn: document.getElementById('stats-btn'),
+  statsDialog: document.getElementById('stats-dialog'),
+  statsClose: document.getElementById('stats-close'),
+  winBanner: document.getElementById('win-banner'),
+  winSummary: document.getElementById('win-summary'),
+  winClose: document.getElementById('win-close'),
 };
 
 let state = null;
@@ -137,12 +144,6 @@ function commit(next) {
   afterChange();
 }
 
-function afterChange() {
-  selection = null;
-  el.undo.disabled = undoStack.length === 0;
-  render();
-}
-
 function doDraw() {
   const next = game.draw(state);
   if (next) commit(next);
@@ -195,21 +196,185 @@ function onBoardClick(event) {
   }
 }
 
+let stats = store.emptyStats();
+let timerStart = null;
+let tickHandle = null;
+let winRecorded = false;
+let confirmingNew = false;
+let confirmTimer = null;
+
+function fmtTime(ms) {
+  const total = Math.floor(ms / 1000);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function elapsed() {
+  return state.elapsedMs + (timerStart == null ? 0 : Date.now() - timerStart);
+}
+
+// Fold the time since the last tick into the state so whatever we persist is
+// always current.
+function syncClock() {
+  if (timerStart != null) {
+    state.elapsedMs += Date.now() - timerStart;
+    timerStart = Date.now();
+  }
+}
+
+function startTimer() {
+  timerStart = Date.now();
+  if (tickHandle) clearInterval(tickHandle);
+  tickHandle = setInterval(() => {
+    el.timer.textContent = fmtTime(elapsed());
+  }, 500);
+}
+
+function stopTimer() {
+  syncClock();
+  timerStart = null;
+  if (tickHandle) {
+    clearInterval(tickHandle);
+    tickHandle = null;
+  }
+}
+
+function renderStreak() {
+  el.streak.textContent = `\u{1F525} ${store.currentStreak(stats, store.todayStr())}`;
+}
+
+function afterChange() {
+  selection = null;
+  syncClock();
+  el.undo.disabled = undoStack.length === 0;
+  el.autoFinish.hidden = !game.canAutoFinish(state);
+  render();
+  el.timer.textContent = fmtTime(elapsed());
+  if (state.won) {
+    if (!winRecorded) {
+      winRecorded = true;
+      onWin();
+    }
+  } else {
+    store.saveGame(state, undoStack);
+  }
+}
+
+function onWin() {
+  stopTimer();
+  const today = store.todayStr();
+  stats = store.recordWin(stats, today, state.elapsedMs, state.moves);
+  store.saveStats(stats);
+  store.clearGame();
+  renderStreak();
+  el.winSummary.textContent =
+    `${fmtTime(state.elapsedMs)} · ${state.moves} moves · ` +
+    `streak ${store.currentStreak(stats, today)}`;
+  el.winBanner.hidden = false;
+}
+
 function undo() {
   if (undoStack.length === 0) return;
+  // Undo rewinds the board but never the clock.
+  const carried = elapsed();
   state = undoStack.pop();
+  state.elapsedMs = carried;
+  timerStart = Date.now();
   afterChange();
 }
 
-function boot() {
+async function autoFinish() {
+  const steps = game.autoFinishSteps(state);
+  if (steps.length === 0) return;
+  undoStack.push(state);
+  el.autoFinish.disabled = true;
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  for (const step of steps) {
+    state = step;
+    render();
+    if (!reduced) await new Promise((resolve) => setTimeout(resolve, 55));
+  }
+  el.autoFinish.disabled = false;
+  afterChange();
+}
+
+function deal() {
   state = game.newGame();
   undoStack = [];
+  winRecorded = false;
+  el.winBanner.hidden = true;
+  stats = store.recordPlayed(stats);
+  store.saveStats(stats);
+  startTimer();
   afterChange();
+}
+
+// Two taps to abandon a game in progress -- a modal dialog would block the
+// page, and an accidental single tap should not wipe the board.
+function requestNewGame() {
+  if (state && !state.won && state.moves > 0 && !confirmingNew) {
+    confirmingNew = true;
+    el.newGame.textContent = 'Sure?';
+    clearTimeout(confirmTimer);
+    confirmTimer = setTimeout(() => {
+      confirmingNew = false;
+      el.newGame.textContent = 'New';
+    }, 3000);
+    return;
+  }
+  clearTimeout(confirmTimer);
+  confirmingNew = false;
+  el.newGame.textContent = 'New';
+  deal();
+}
+
+function showStats() {
+  const today = store.todayStr();
+  const set = (id, value) => {
+    document.getElementById(id).textContent = value;
+  };
+  set('stat-streak', String(store.currentStreak(stats, today)));
+  set('stat-best-streak', String(stats.bestStreak));
+  set('stat-won', String(stats.won));
+  set('stat-played', String(stats.played));
+  set('stat-rate', stats.played ? `${Math.round((stats.won / stats.played) * 100)}%` : '—');
+  set('stat-time', stats.bestTimeMs == null ? '—' : fmtTime(stats.bestTimeMs));
+  set('stat-moves', stats.bestMoves == null ? '—' : String(stats.bestMoves));
+  el.statsDialog.showModal();
+}
+
+function boot() {
+  stats = store.loadStats();
+  renderStreak();
+  const saved = store.loadGame();
+  if (saved) {
+    state = saved.state;
+    undoStack = saved.undo;
+    winRecorded = false;
+    startTimer();
+    afterChange();
+  } else {
+    deal();
+  }
 }
 
 el.board.addEventListener('click', onBoardClick);
 el.undo.addEventListener('click', undo);
-el.newGame.addEventListener('click', boot);
+el.newGame.addEventListener('click', requestNewGame);
+el.autoFinish.addEventListener('click', autoFinish);
+el.statsBtn.addEventListener('click', showStats);
+el.statsClose.addEventListener('click', () => el.statsDialog.close());
+el.winClose.addEventListener('click', deal);
+
+// Pause the clock and flush the save whenever the app goes to the background.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopTimer();
+    if (state && !state.won) store.saveGame(state, undoStack);
+  } else if (state && !state.won) {
+    startTimer();
+    renderStreak();
+  }
+});
 
 boot();
 window.addEventListener('resize', () => render());
