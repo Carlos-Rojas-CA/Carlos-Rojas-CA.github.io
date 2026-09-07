@@ -151,6 +151,7 @@ function doDraw() {
 }
 
 function onBoardClick(event) {
+  if (animating) return;
   const ref = refFromEvent(event);
   if (!ref) return;
 
@@ -200,6 +201,7 @@ let stats = store.emptyStats();
 let timerStart = null;
 let tickHandle = null;
 let winRecorded = false;
+let animating = false;
 let confirmingNew = false;
 let confirmTimer = null;
 
@@ -245,8 +247,8 @@ function renderStreak() {
 function afterChange() {
   selection = null;
   syncClock();
-  el.undo.disabled = undoStack.length === 0;
-  el.autoFinish.hidden = !game.canAutoFinish(state);
+  el.undo.disabled = undoStack.length === 0 || state.won;
+  el.autoFinish.hidden = state.won || !game.canAutoFinish(state);
   render();
   el.timer.textContent = fmtTime(elapsed());
   if (state.won) {
@@ -273,6 +275,7 @@ function onWin() {
 }
 
 function undo() {
+  if (animating) return;
   if (undoStack.length === 0) return;
   // Undo rewinds the board but never the clock.
   const carried = elapsed();
@@ -283,17 +286,24 @@ function undo() {
 }
 
 async function autoFinish() {
+  if (animating) return;
   const steps = game.autoFinishSteps(state);
   if (steps.length === 0) return;
   undoStack.push(state);
+  animating = true;
   el.autoFinish.disabled = true;
-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  for (const step of steps) {
-    state = step;
-    render();
-    if (!reduced) await new Promise((resolve) => setTimeout(resolve, 55));
+  selection = null;
+  try {
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    for (const step of steps) {
+      state = step;
+      render();
+      if (!reduced) await new Promise((resolve) => setTimeout(resolve, 55));
+    }
+  } finally {
+    animating = false;
+    el.autoFinish.disabled = false;
   }
-  el.autoFinish.disabled = false;
   afterChange();
 }
 
@@ -311,6 +321,7 @@ function deal() {
 // Two taps to abandon a game in progress -- a modal dialog would block the
 // page, and an accidental single tap should not wipe the board.
 function requestNewGame() {
+  if (animating) return;
   if (state && !state.won && state.moves > 0 && !confirmingNew) {
     confirmingNew = true;
     el.newGame.textContent = 'Sure?';
