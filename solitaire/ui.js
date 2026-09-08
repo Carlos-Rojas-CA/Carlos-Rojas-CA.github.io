@@ -28,11 +28,54 @@ const el = {
 let state = null;
 let selection = null;
 
+const FACE_RATIO = 0.26;
+const DOWN_RATIO = 0.11;
+const MAX_SPREAD = 2.2;
+const MOVE_MS = 180;
+
+// How many offset-units tall a pile is. The last card contributes its full
+// height rather than an offset, so it is excluded.
+function offsetUnits(pile) {
+  let units = 0;
+  for (let i = 0; i < pile.length - 1; i++) {
+    units += pile[i].faceUp ? FACE_RATIO : DOWN_RATIO;
+  }
+  return units;
+}
+
 // Card height comes from the laid-out stock slot rather than from parsing the
 // CSS variables, so the cascade offsets follow whatever the stylesheet decided.
+//
+// The cascades then stretch to fill whatever vertical room the tableau row
+// actually has. On a tall phone that turns a ~19px sliver of each stacked card
+// into a comfortable tap target; as piles grow the scale falls back toward 1
+// so everything still fits. Never below 1 (that would be tighter than the
+// design's minimum) and never above MAX_SPREAD (cards stop reading as a stack).
 function metrics() {
   const cardH = el.stock.offsetHeight || 1;
-  return { cardH, faceOffset: cardH * 0.26, downOffset: cardH * 0.11 };
+  let scale = 1;
+  // Measure the room available to the tableau from the board's own content box
+  // minus the foundations row and its gap. Reading the tableau row's height
+  // instead would be circular -- its height is what we are computing.
+  let available = 0;
+  const row = el.tableau[0] && el.tableau[0].parentNode;
+  if (row && el.board.clientHeight) {
+    const boardStyle = getComputedStyle(el.board);
+    const padV = parseFloat(boardStyle.paddingTop) + parseFloat(boardStyle.paddingBottom);
+    const rowGap = parseFloat(getComputedStyle(row).marginTop) || 0;
+    const topRow = el.foundations[0] ? el.foundations[0].parentNode.offsetHeight : cardH;
+    available = el.board.clientHeight - padV - topRow - rowGap;
+  }
+  const tallest = state ? Math.max(...state.tableau.map(offsetUnits)) : 0;
+  if (available > 0 && tallest > 0) {
+    const fitted = (available - cardH) / (tallest * cardH);
+    if (Number.isFinite(fitted)) scale = Math.min(MAX_SPREAD, Math.max(1, fitted));
+  }
+  return {
+    cardH,
+    faceOffset: cardH * FACE_RATIO * scale,
+    downOffset: cardH * DOWN_RATIO * scale,
+  };
 }
 
 function label(card) {
@@ -47,6 +90,9 @@ function cardEl(card, ref) {
   if (ref.cardIndex != null) node.dataset.cardIndex = String(ref.cardIndex);
   if (card.faceUp) {
     node.dataset.color = game.isRed(card) ? 'red' : 'black';
+    // Identity key for the move animation. Only face-up cards get one --
+    // keying a face-down card would leak its identity into the DOM.
+    node.dataset.key = `${card.rank}${card.suit}`;
     const text = label(card);
     node.innerHTML =
       `<span class="corner tl">${text}</span>` +
@@ -91,6 +137,49 @@ function renderTableau(node, pile, index) {
   });
   const lastOffset = pile.length ? top - (pile[pile.length - 1].faceUp ? m.faceOffset : m.downOffset) : 0;
   node.style.height = `${Math.max(m.cardH, lastOffset + m.cardH)}px`;
+}
+
+function reducedMotion() {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+// FLIP: record where every face-up card is, let render() rebuild the board,
+// then transform each moved card back to where it was and release it. The
+// cards slide to their new homes instead of teleporting.
+function snapshot() {
+  const seen = new Map();
+  if (reducedMotion()) return seen;
+  for (const node of el.board.querySelectorAll('.card[data-key]')) {
+    const box = node.getBoundingClientRect();
+    seen.set(node.dataset.key, { x: box.left, y: box.top });
+  }
+  return seen;
+}
+
+function playMoves(before, duration = MOVE_MS) {
+  if (before.size === 0) return;
+  for (const node of el.board.querySelectorAll('.card[data-key]')) {
+    const was = before.get(node.dataset.key);
+    if (!was) continue;
+    const box = node.getBoundingClientRect();
+    const dx = was.x - box.left;
+    const dy = was.y - box.top;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+    node.style.transition = 'none';
+    node.style.transform = `translate(${dx}px, ${dy}px)`;
+    node.style.zIndex = '40';   // fly above the piles it crosses
+    requestAnimationFrame(() => {
+      node.style.transition = `transform ${duration}ms cubic-bezier(0.22, 0.61, 0.36, 1)`;
+      node.style.transform = '';
+    });
+  }
+}
+
+// Re-render, animating any card that changed position.
+function renderAnimated(duration = MOVE_MS) {
+  const before = snapshot();
+  render();
+  playMoves(before, duration);
 }
 
 function render() {
@@ -270,7 +359,7 @@ function afterChange() {
   syncClock();
   el.undo.disabled = undoStack.length === 0 || state.won;
   el.autoFinish.hidden = state.won || !game.canAutoFinish(state);
-  render();
+  renderAnimated();
   el.timer.textContent = fmtTime(elapsed());
   if (state.won) {
     if (!winRecorded) {
@@ -316,11 +405,15 @@ async function autoFinish() {
   el.autoFinish.disabled = true;
   selection = null;
   try {
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduced = reducedMotion();
+    // Step delay matches the flight time: each card lands before the next
+    // render() replaces its node, so the stream reads as a clean cascade.
+    const stepMs = 90;
     for (const step of steps) {
       state = step;
-      render();
-      if (!reduced) await new Promise((resolve) => setTimeout(resolve, 55));
+      if (reduced) render();
+      else renderAnimated(stepMs);
+      if (!reduced) await new Promise((resolve) => setTimeout(resolve, stepMs));
     }
   } finally {
     animating = false;
