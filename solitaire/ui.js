@@ -229,6 +229,11 @@ function shake(ref) {
 }
 
 function commit(next) {
+  // First move of the game starts the clock.
+  if (!clockStarted) {
+    clockStarted = true;
+    startTimer();
+  }
   undoStack.push(state);
   if (undoStack.length > 200) undoStack.shift();
   state = next;
@@ -292,6 +297,9 @@ let stats = store.emptyStats();
 let timerStart = null;
 let tickHandle = null;
 let winRecorded = false;
+// The clock does not run until the first move, so a board can sit untouched
+// without accruing time.
+let clockStarted = false;
 let animating = false;
 let confirmingNew = false;
 let confirmTimer = null;
@@ -313,6 +321,16 @@ function syncClock() {
     state.elapsedMs += Date.now() - timerStart;
     timerStart = Date.now();
   }
+}
+
+// Restart the clock only if this game's clock has actually begun, is not
+// finished, the app is in the foreground, and no dialog is covering the board.
+function resumeTimer() {
+  if (!clockStarted) return;
+  if (!state || state.won) return;
+  if (document.hidden) return;
+  if (el.statsDialog.open) return;
+  startTimer();
 }
 
 function startTimer() {
@@ -467,6 +485,12 @@ async function autoFinish() {
 }
 
 function deal() {
+  // Stop the clock BEFORE swapping the state in: stopTimer folds the time
+  // since the last tick into `state`, and doing that after the swap charged
+  // the new game for the previous one's seconds.
+  stopTimer();
+  clockStarted = false;
+
   state = game.newGame();
   undoStack = [];
   winRecorded = false;
@@ -474,7 +498,7 @@ function deal() {
   el.winBanner.hidden = true;
   stats = store.recordPlayed(stats);
   store.saveStats(stats);
-  startTimer();
+  el.timer.textContent = fmtTime(0);
   afterChange();
 }
 
@@ -510,6 +534,8 @@ function showStats() {
   set('stat-rate', stats.played ? `${Math.round((stats.won / stats.played) * 100)}%` : '—');
   set('stat-time', stats.bestTimeMs == null ? '—' : fmtTime(stats.bestTimeMs));
   set('stat-moves', stats.bestMoves == null ? '—' : String(stats.bestMoves));
+  // Reading your stats should not cost you time.
+  stopTimer();
   el.statsDialog.showModal();
 }
 
@@ -522,7 +548,9 @@ function boot() {
       state = saved.state;
       undoStack = saved.undo;
       winRecorded = false;
-      startTimer();
+      // A saved game with moves on it was already being timed.
+      clockStarted = state.moves > 0 || state.elapsedMs > 0;
+      resumeTimer();
       afterChange();
     } catch (e) {
       // A structurally corrupt save must not take the app down with it.
@@ -540,6 +568,8 @@ el.newGame.addEventListener('click', requestNewGame);
 el.autoFinish.addEventListener('click', autoFinish);
 el.statsBtn.addEventListener('click', showStats);
 el.statsClose.addEventListener('click', () => el.statsDialog.close());
+// Fires for the Close button and for Esc alike.
+el.statsDialog.addEventListener('close', resumeTimer);
 el.winClose.addEventListener('click', deal);
 
 // Pause the clock and flush the save whenever the app goes to the background.
@@ -548,7 +578,7 @@ document.addEventListener('visibilitychange', () => {
     stopTimer();
     if (state && !state.won) flushSave();
   } else if (state && !state.won) {
-    startTimer();
+    resumeTimer();
     renderStreak();
   }
 });
