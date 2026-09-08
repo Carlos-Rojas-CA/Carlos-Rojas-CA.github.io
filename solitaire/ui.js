@@ -640,6 +640,7 @@ function showStats() {
   set('stat-rate', stats.played ? `${Math.round((stats.won / stats.played) * 100)}%` : '—');
   set('stat-time', stats.bestTimeMs == null ? '—' : fmtTime(stats.bestTimeMs));
   set('stat-moves', stats.bestMoves == null ? '—' : String(stats.bestMoves));
+  showCachedVersion();
   // Reading your stats should not cost you time.
   stopTimer();
   el.statsDialog.showModal();
@@ -701,6 +702,11 @@ document.addEventListener('visibilitychange', () => {
     resumeTimer();
     renderStreak();
   }
+  // An installed app is resumed, not reloaded, so the load-time update check
+  // never runs again. Re-check whenever it comes back to the foreground.
+  if (!document.hidden && swRegistration) {
+    swRegistration.update().catch(() => {});
+  }
 });
 
 boot();
@@ -736,6 +742,22 @@ function watchForUpdate(reg) {
   });
 }
 
+// Report the cache the app is actually running from. If this disagrees with
+// what was deployed, the install is stale -- which is the whole reason the
+// version is worth showing.
+async function showCachedVersion() {
+  if (typeof caches === 'undefined') {
+    el.updateStatus.textContent = 'Offline support unavailable here.';
+    return;
+  }
+  try {
+    const mine = (await caches.keys()).filter((k) => k.startsWith('solitaire-'));
+    el.updateStatus.textContent = mine.length ? `Running ${mine.join(', ')}` : 'Not cached yet.';
+  } catch (e) {
+    el.updateStatus.textContent = '';
+  }
+}
+
 async function checkForUpdate() {
   if (!swRegistration) {
     el.updateStatus.textContent = 'Offline support is not active in this browser.';
@@ -747,9 +769,8 @@ async function checkForUpdate() {
     await swRegistration.update();
     // update() resolves once the check is done; an update that was found is
     // reported by the updatefound listener above.
-    el.updateStatus.textContent = el.updatePill.hidden
-      ? 'You have the latest version.'
-      : 'Update ready \u2014 tap Reload.';
+    if (el.updatePill.hidden) await showCachedVersion();
+    else el.updateStatus.textContent = 'Update ready \u2014 tap Reload.';
   } catch (e) {
     el.updateStatus.textContent = 'Could not check right now.';
   } finally {
@@ -767,7 +788,7 @@ el.checkUpdate.addEventListener('click', checkForUpdate);
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register('sw.js')
+      .register('sw.js', { updateViaCache: 'none' })
       .then((reg) => {
         swRegistration = reg;
         watchForUpdate(reg);
