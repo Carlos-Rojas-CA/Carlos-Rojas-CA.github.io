@@ -223,8 +223,10 @@ gradient back.
   than face-down ones.
 - Table felt is a deep green; buttons and the selection highlight use the
   site's teal `#4aaaa5` to tie the app to the portfolio.
-- Heights use `dvh` and honor `env(safe-area-inset-*)` so the board clears
-  a notch and the iOS home indicator.
+- Heights honor `env(safe-area-inset-*)` so the board clears a notch and the
+  iOS home indicator. The board is not constrained to the viewport height: a
+  long tableau column scrolls the page, which keeps every card reachable
+  rather than compressing the cascade to fit.
 - Landscape caps `--card-w` and centers the board rather than stretching.
 - Touch targets are at least 44px in their smallest dimension.
 - Animations are disabled under `prefers-reduced-motion`.
