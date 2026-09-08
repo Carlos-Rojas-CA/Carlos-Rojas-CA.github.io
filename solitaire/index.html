@@ -18,13 +18,13 @@
 
 <main id="board">
   <div class="row row-top">
-    <div class="pile stock" data-pile="stock"></div>
-    <div class="pile waste" data-pile="waste"></div>
-    <div class="spacer"></div>
     <div class="pile foundation" data-pile="foundation" data-index="0" data-glyph="&#9824;"></div>
     <div class="pile foundation" data-pile="foundation" data-index="1" data-glyph="&#9829;"></div>
     <div class="pile foundation" data-pile="foundation" data-index="2" data-glyph="&#9830;"></div>
     <div class="pile foundation" data-pile="foundation" data-index="3" data-glyph="&#9827;"></div>
+    <div class="spacer"></div>
+    <div class="pile waste" data-pile="waste"></div>
+    <div class="pile stock" data-pile="stock"></div>
   </div>
   <div class="row row-tableau">
     <div class="pile tableau" data-pile="tableau" data-index="0"></div>
@@ -49,6 +49,8 @@
   <button id="stats-btn" class="btn" type="button" aria-label="Statistics">&#9432;</button>
 </header>
 
+<button id="update-pill" type="button" hidden>New version &mdash; tap to reload</button>
+
 <div id="win-banner" role="dialog" aria-modal="true" aria-live="polite" hidden>
   <div class="win-card">
     <h2>You win</h2>
@@ -68,7 +70,11 @@
     <dt>Best time</dt><dd id="stat-time">--</dd>
     <dt>Fewest moves</dt><dd id="stat-moves">--</dd>
   </dl>
-  <button id="stats-close" class="btn" type="button">Close</button>
+  <div class="dialog-actions">
+    <button id="check-update" class="btn" type="button">Check for updates</button>
+    <button id="stats-close" class="btn" type="button">Close</button>
+  </div>
+  <p id="update-status" class="update-status"></p>
 </dialog>
 
 <script type="module" src="ui.js"></script>

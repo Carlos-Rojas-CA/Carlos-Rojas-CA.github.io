@@ -23,6 +23,9 @@ const el = {
   winBanner: document.getElementById('win-banner'),
   winSummary: document.getElementById('win-summary'),
   winClose: document.getElementById('win-close'),
+  updatePill: document.getElementById('update-pill'),
+  checkUpdate: document.getElementById('check-update'),
+  updateStatus: document.getElementById('update-status'),
 };
 
 let state = null;
@@ -30,51 +33,23 @@ let selection = null;
 
 const FACE_RATIO = 0.26;
 const DOWN_RATIO = 0.11;
-const MAX_SPREAD = 2.2;
-const MOVE_MS = 180;
-
-// How many offset-units tall a pile is. The last card contributes its full
-// height rather than an offset, so it is excluded.
-function offsetUnits(pile) {
-  let units = 0;
-  for (let i = 0; i < pile.length - 1; i++) {
-    units += pile[i].faceUp ? FACE_RATIO : DOWN_RATIO;
-  }
-  return units;
-}
+// Fixed spread. This is deliberately NOT adaptive: sizing the cascades to the
+// free space meant every move that changed a pile's height re-flowed the whole
+// board, and cards visibly drifted into the gap. A constant keeps every card
+// still unless it was actually played. 1.5 is the largest value where even a
+// 19-card pile still fits a phone screen without scrolling, and it still turns
+// an 18px tap strip into 27px.
+const SPREAD = 1.5;
+const MOVE_MS = 140;
 
 // Card height comes from the laid-out stock slot rather than from parsing the
 // CSS variables, so the cascade offsets follow whatever the stylesheet decided.
-//
-// The cascades then stretch to fill whatever vertical room the tableau row
-// actually has. On a tall phone that turns a ~19px sliver of each stacked card
-// into a comfortable tap target; as piles grow the scale falls back toward 1
-// so everything still fits. Never below 1 (that would be tighter than the
-// design's minimum) and never above MAX_SPREAD (cards stop reading as a stack).
 function metrics() {
   const cardH = el.stock.offsetHeight || 1;
-  let scale = 1;
-  // Measure the room available to the tableau from the board's own content box
-  // minus the foundations row and its gap. Reading the tableau row's height
-  // instead would be circular -- its height is what we are computing.
-  let available = 0;
-  const row = el.tableau[0] && el.tableau[0].parentNode;
-  if (row && el.board.clientHeight) {
-    const boardStyle = getComputedStyle(el.board);
-    const padV = parseFloat(boardStyle.paddingTop) + parseFloat(boardStyle.paddingBottom);
-    const rowGap = parseFloat(getComputedStyle(row).marginTop) || 0;
-    const topRow = el.foundations[0] ? el.foundations[0].parentNode.offsetHeight : cardH;
-    available = el.board.clientHeight - padV - topRow - rowGap;
-  }
-  const tallest = state ? Math.max(...state.tableau.map(offsetUnits)) : 0;
-  if (available > 0 && tallest > 0) {
-    const fitted = (available - cardH) / (tallest * cardH);
-    if (Number.isFinite(fitted)) scale = Math.min(MAX_SPREAD, Math.max(1, fitted));
-  }
   return {
     cardH,
-    faceOffset: cardH * FACE_RATIO * scale,
-    downOffset: cardH * DOWN_RATIO * scale,
+    faceOffset: cardH * FACE_RATIO * SPREAD,
+    downOffset: cardH * DOWN_RATIO * SPREAD,
   };
 }
 
@@ -511,10 +486,75 @@ document.addEventListener('visibilitychange', () => {
 boot();
 window.addEventListener('resize', () => render());
 
+// --- staying up to date -------------------------------------------------
+//
+// The service worker is cache-first so the game works offline, which means an
+// installed device will happily serve an old build forever. Rather than rely on
+// remembering to bump CACHE_VERSION and hoping the phone notices, the app asks
+// for a fresh copy on every launch and offers a reload when one lands.
+
+let swRegistration = null;
+
+function showUpdatePill() {
+  el.updatePill.hidden = false;
+}
+
+// A new worker taking control means new files are cached; the open page is
+// still running the old ones, so it needs a reload to pick them up.
+function watchForUpdate(reg) {
+  if (!reg) return;
+  if (reg.waiting) showUpdatePill();
+  reg.addEventListener('updatefound', () => {
+    const installing = reg.installing;
+    if (!installing) return;
+    installing.addEventListener('statechange', () => {
+      // controller check: on a first-ever install there is nothing to replace.
+      if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+        showUpdatePill();
+      }
+    });
+  });
+}
+
+async function checkForUpdate() {
+  if (!swRegistration) {
+    el.updateStatus.textContent = 'Offline support is not active in this browser.';
+    return;
+  }
+  el.updateStatus.textContent = 'Checking\u2026';
+  el.checkUpdate.disabled = true;
+  try {
+    await swRegistration.update();
+    // update() resolves once the check is done; an update that was found is
+    // reported by the updatefound listener above.
+    el.updateStatus.textContent = el.updatePill.hidden
+      ? 'You have the latest version.'
+      : 'Update ready \u2014 tap Reload.';
+  } catch (e) {
+    el.updateStatus.textContent = 'Could not check right now.';
+  } finally {
+    el.checkUpdate.disabled = false;
+  }
+}
+
+el.updatePill.addEventListener('click', () => {
+  // Flush the in-progress game first: reloading must not cost the player moves.
+  if (state && !state.won) flushSave();
+  location.reload();
+});
+el.checkUpdate.addEventListener('click', checkForUpdate);
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {
-      /* offline support is optional; the game works without it */
-    });
+    navigator.serviceWorker
+      .register('sw.js')
+      .then((reg) => {
+        swRegistration = reg;
+        watchForUpdate(reg);
+        return reg.update().catch(() => {});
+      })
+      .catch(() => {
+        /* offline support is optional; the game works without it */
+      });
   });
 }
