@@ -225,12 +225,12 @@ function onBoardClick(event) {
     return;
   }
 
-  // Double tap sends a single card home.
+  // Double tap plays the card without dragging it anywhere.
   const key = `${ref.pile}:${ref.index}:${ref.cardIndex}`;
   const now = Date.now();
   if (key === lastTap.key && now - lastTap.time < 350) {
     lastTap = { key: '', time: 0 };
-    const next = game.autoToFoundation(state, ref);
+    const next = smartMove(ref);
     if (next) {
       commit(next);
       return;
@@ -360,6 +360,47 @@ function onWin() {
   el.winBanner.hidden = false;
 }
 
+// Which tableau column a given card was sent to last, so repeated double taps
+// walk it around its options instead of parking it on the first one.
+let cycle = { key: '', index: 0 };
+
+// Double tap: send the card home if it can go, otherwise drop it on a column it
+// legally fits. A card with two homes -- a red 4 with a black 5 either side --
+// alternates between them on repeated taps.
+function smartMove(ref) {
+  const run = game.grabbed(state, ref);
+  if (run.length === 0) return null;
+
+  // Foundations win outright: finishing beats rearranging. A multi-card run
+  // cannot go home, so autoToFoundation declines it and we fall through.
+  const home = game.autoToFoundation(state, ref);
+  if (home) {
+    cycle = { key: '', index: 0 };
+    return home;
+  }
+
+  // Moving a whole column onto another empty column is legal but achieves
+  // nothing, and it makes double-tapping a lone King shuffle it around the
+  // board. Skip those.
+  const movingWholeColumn =
+    ref.pile === 'tableau' && (ref.cardIndex == null || ref.cardIndex === 0);
+
+  const targets = [];
+  for (let i = 0; i < el.tableau.length; i++) {
+    if (ref.pile === 'tableau' && ref.index === i) continue;
+    if (movingWholeColumn && state.tableau[i].length === 0) continue;
+    if (game.canMove(state, ref, { pile: 'tableau', index: i })) targets.push(i);
+  }
+  if (targets.length === 0) return null;
+
+  // Identity of the run's head, so the rotation follows the card rather than
+  // the position it happens to occupy.
+  const id = `${run[0].rank}${run[0].suit}`;
+  const index = cycle.key === id ? (cycle.index + 1) % targets.length : 0;
+  cycle = { key: id, index };
+  return game.applyMove(state, ref, { pile: 'tableau', index: targets[index] });
+}
+
 function undo() {
   if (animating) return;
   if (undoStack.length === 0) return;
@@ -401,6 +442,7 @@ function deal() {
   state = game.newGame();
   undoStack = [];
   winRecorded = false;
+  cycle = { key: '', index: 0 };
   el.winBanner.hidden = true;
   stats = store.recordPlayed(stats);
   store.saveStats(stats);

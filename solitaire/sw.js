@@ -1,6 +1,6 @@
 // BUMP THIS on every change to any file listed in ASSETS, in the same commit.
 // A cache-first worker will otherwise keep serving the old build forever.
-const CACHE_VERSION = 'solitaire-v4';
+const CACHE_VERSION = 'solitaire-v5';
 
 const ASSETS = [
   './',

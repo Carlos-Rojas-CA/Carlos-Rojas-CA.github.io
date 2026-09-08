@@ -15,6 +15,12 @@
 </head>
 <body>
 
+<header class="statusbar">
+  <span id="streak" title="Daily win streak">&#128293; 0</span>
+  <span id="timer">0:00</span>
+  <span id="moves" title="Moves">0</span>
+  <button id="stats-btn" class="icon-btn" type="button" aria-label="Statistics">&#9432;</button>
+</header>
 
 <main id="board">
   <div class="row row-top">
@@ -37,17 +43,13 @@
   </div>
 </main>
 
-<header class="topbar">
+<footer class="toolbar">
   <button id="new-game" class="btn" type="button">New</button>
   <button id="undo" class="btn" type="button" disabled>Undo</button>
   <button id="auto-finish" class="btn btn-accent" type="button" hidden>Finish</button>
-  <div class="readout">
-    <span id="streak" title="Daily win streak">&#128293; 0</span>
-    <span id="timer">0:00</span>
-    <span id="moves" title="Moves">0</span>
-  </div>
-  <button id="stats-btn" class="btn" type="button" aria-label="Statistics">&#9432;</button>
-</header>
+</footer>
+
+
 
 <button id="update-pill" type="button" hidden>New version &mdash; tap to reload</button>
 
