@@ -95,8 +95,7 @@ function renderTop(node, pile, ref) {
   node.appendChild(child);
 }
 
-function renderTableau(node, pile, index) {
-  const m = metrics();
+function renderTableau(node, pile, index, m) {
   node.textContent = '';
   let top = 0;
   let selectedFrom = Infinity;
@@ -133,6 +132,11 @@ function snapshot() {
 
 function playMoves(before, duration = MOVE_MS) {
   if (before.size === 0) return;
+
+  // Read every position first, then write. Interleaving a style write with the
+  // next card's getBoundingClientRect forces a synchronous layout per card --
+  // 52 of them per move instead of one.
+  const flights = [];
   for (const node of el.board.querySelectorAll('.card[data-key]')) {
     const was = before.get(node.dataset.key);
     if (!was) continue;
@@ -140,14 +144,32 @@ function playMoves(before, duration = MOVE_MS) {
     const dx = was.x - box.left;
     const dy = was.y - box.top;
     if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+    flights.push({ node, dx, dy });
+  }
+  if (flights.length === 0) return;
+
+  for (const { node, dx, dy } of flights) {
     node.style.transition = 'none';
     node.style.transform = `translate(${dx}px, ${dy}px)`;
-    node.style.zIndex = '40';   // fly above the piles it crosses
-    requestAnimationFrame(() => {
+    node.style.zIndex = '40';        // fly above the piles it crosses
+    node.style.willChange = 'transform';  // only for the ~140ms it is moving
+  }
+  requestAnimationFrame(() => {
+    for (const { node } of flights) {
       node.style.transition = `transform ${duration}ms cubic-bezier(0.22, 0.61, 0.36, 1)`;
       node.style.transform = '';
-    });
-  }
+      // Hand the layer back once the card has landed.
+      node.addEventListener(
+        'transitionend',
+        () => {
+          node.style.willChange = '';
+          node.style.transition = '';
+          node.style.zIndex = '';
+        },
+        { once: true }
+      );
+    }
+  });
 }
 
 // Re-render, animating any card that changed position.
@@ -163,7 +185,10 @@ function render() {
   state.foundations.forEach((pile, i) => {
     renderTop(el.foundations[i], pile, { pile: 'foundation', index: i });
   });
-  state.tableau.forEach((pile, i) => renderTableau(el.tableau[i], pile, i));
+  // One measurement for the whole board: metrics() reads offsetHeight, and
+  // calling it per column forced a synchronous layout seven times per render.
+  const m = metrics();
+  state.tableau.forEach((pile, i) => renderTableau(el.tableau[i], pile, i, m));
   el.moves.textContent = String(state.moves);
 }
 

@@ -172,11 +172,6 @@ body {
 }
 .card[data-color="red"] { color: var(--red); }
 .card[data-color="black"] { color: var(--black); }
-/* The move animation sets transform/transition inline per flight; this only
-   guarantees transforms compose predictably and that a flying card is not
-   clipped by its pile. */
-.card { will-change: transform; }
-
 .card.selected {
   box-shadow: 0 0 0 3px var(--accent), 0 1px 2px rgba(0, 0, 0, 0.45);
 }
