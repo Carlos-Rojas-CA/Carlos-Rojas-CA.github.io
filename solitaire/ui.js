@@ -40,7 +40,9 @@ const DOWN_RATIO = 0.11;
 // 19-card pile still fits a phone screen without scrolling, and it still turns
 // an 18px tap strip into 27px.
 const SPREAD = 1.5;
-const MOVE_MS = 140;
+// How long a card takes to travel to its new pile. Tune here -- this is the
+// one number that controls how the game feels when you play a card.
+const MOVE_MS = 280;
 
 // Card height comes from the laid-out stock slot rather than from parsing the
 // CSS variables, so the cascade offsets follow whatever the stylesheet decided.
@@ -447,9 +449,10 @@ async function autoFinish() {
   selection = null;
   try {
     const reduced = reducedMotion();
-    // Step delay matches the flight time: each card lands before the next
-    // render() replaces its node, so the stream reads as a clean cascade.
-    const stepMs = 90;
+    // Each step re-renders, which replaces the flying card's node -- so a
+    // card's flight is capped at the step delay. Keep the win cascade brisk
+    // (52 cards) rather than using the full MOVE_MS.
+    const stepMs = 120;
     for (const step of steps) {
       state = step;
       if (reduced) render();
