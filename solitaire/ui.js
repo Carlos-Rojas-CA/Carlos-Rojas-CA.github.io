@@ -23,6 +23,7 @@ const el = {
   winBanner: document.getElementById('win-banner'),
   winSummary: document.getElementById('win-summary'),
   winClose: document.getElementById('win-close'),
+  hint: document.getElementById('hint'),
   updatePill: document.getElementById('update-pill'),
   checkUpdate: document.getElementById('check-update'),
   updateStatus: document.getElementById('update-status'),
@@ -375,6 +376,7 @@ function flushSave() {
 }
 
 function afterChange() {
+  clearHint();
   selection = null;
   syncClock();
   el.undo.disabled = undoStack.length === 0 || state.won;
@@ -444,6 +446,110 @@ function smartMove(ref) {
   const index = cycle.key === id ? (cycle.index + 1) % targets.length : 0;
   cycle = { key: id, index };
   return game.applyMove(state, ref, { pile: 'tableau', index: targets[index] });
+}
+
+// --- hints ---------------------------------------------------------------
+//
+// Ranked by what actually helps: sending a card home, then anything that turns
+// a face-down card over, then getting a card out of the waste, then ordinary
+// tidying. Falling back to "draw" only when the board genuinely offers nothing.
+function findHint(st) {
+  const sources = [];
+  if (st.waste.length) sources.push({ pile: 'waste' });
+  for (let i = 0; i < st.tableau.length; i++) {
+    const pile = st.tableau[i];
+    for (let c = 0; c < pile.length; c++) {
+      if (!pile[c].faceUp) continue;
+      if (game.grabbed(st, { pile: 'tableau', index: i, cardIndex: c }).length) {
+        sources.push({ pile: 'tableau', index: i, cardIndex: c });
+      }
+    }
+  }
+
+  let best = null;
+  const consider = (from, to, score) => {
+    if (!best || score > best.score) best = { from, to, score };
+  };
+
+  for (const from of sources) {
+    const run = game.grabbed(st, from);
+    if (run.length === 1) {
+      const fi = game.SUITS.indexOf(run[0].suit);
+      if (game.canMove(st, from, { pile: 'foundation', index: fi })) {
+        consider(from, { pile: 'foundation', index: fi }, 100);
+      }
+    }
+    for (let j = 0; j < st.tableau.length; j++) {
+      if (from.pile === 'tableau' && from.index === j) continue;
+      // Shuffling a whole column onto an empty one achieves nothing.
+      if (from.pile === 'tableau' && from.cardIndex === 0 && st.tableau[j].length === 0) continue;
+      if (!game.canMove(st, from, { pile: 'tableau', index: j })) continue;
+
+      const revealsACard =
+        from.pile === 'tableau' &&
+        from.cardIndex > 0 &&
+        !st.tableau[from.index][from.cardIndex - 1].faceUp;
+
+      consider(from, { pile: 'tableau', index: j }, revealsACard ? 60 : from.pile === 'waste' ? 40 : 10);
+    }
+  }
+
+  if (best) return best;
+  if (st.stock.length > 0 || st.waste.length > 0) return { from: { pile: 'stock' }, to: null };
+  return null;
+}
+
+function pileNode(ref) {
+  if (!ref) return null;
+  if (ref.pile === 'tableau') return el.tableau[ref.index];
+  if (ref.pile === 'foundation') return el.foundations[ref.index];
+  if (ref.pile === 'waste') return el.waste;
+  return el.stock;
+}
+
+let hintTimer = null;
+let hintShowing = false;
+
+// Called from afterChange on every move, so it must cost nothing when there is
+// no hint on screen -- hence the flag rather than an unconditional DOM query.
+function clearHint() {
+  if (hintTimer) {
+    clearTimeout(hintTimer);
+    hintTimer = null;
+  }
+  if (!hintShowing) return;
+  hintShowing = false;
+  for (const node of el.board.querySelectorAll('.hint-card, .hint-target')) {
+    node.classList.remove('hint-card', 'hint-target');
+  }
+}
+
+function showHint() {
+  if (animating || !state || state.won) return;
+  clearHint();
+
+  const hint = findHint(state);
+  if (!hint) {
+    // Nothing legal and nothing left to draw.
+    const label = el.hint.textContent;
+    el.hint.textContent = 'No moves';
+    setTimeout(() => { el.hint.textContent = label; }, 1400);
+    return;
+  }
+
+  const source = pileNode(hint.from);
+  if (source) {
+    const card =
+      hint.from.cardIndex != null
+        ? source.children[hint.from.cardIndex]
+        : source.children[source.children.length - 1];
+    (card || source).classList.add('hint-card');
+  }
+  const target = pileNode(hint.to);
+  if (target) target.classList.add('hint-target');
+
+  hintShowing = true;
+  hintTimer = setTimeout(clearHint, 1900);
 }
 
 function undo() {
@@ -566,10 +672,24 @@ el.board.addEventListener('click', onBoardClick);
 el.undo.addEventListener('click', undo);
 el.newGame.addEventListener('click', requestNewGame);
 el.autoFinish.addEventListener('click', autoFinish);
+el.hint.addEventListener('click', showHint);
 el.statsBtn.addEventListener('click', showStats);
 el.statsClose.addEventListener('click', () => el.statsDialog.close());
 // Fires for the Close button and for Esc alike.
 el.statsDialog.addEventListener('close', resumeTimer);
+
+// Tap outside the panel to dismiss it. A backdrop click reports the dialog
+// itself as the target, but so does its padding -- compare against the box so
+// a tap on the padding does not close it unexpectedly.
+el.statsDialog.addEventListener('click', (event) => {
+  const box = el.statsDialog.getBoundingClientRect();
+  const outside =
+    event.clientX < box.left ||
+    event.clientX > box.right ||
+    event.clientY < box.top ||
+    event.clientY > box.bottom;
+  if (outside) el.statsDialog.close();
+});
 el.winClose.addEventListener('click', deal);
 
 // Pause the clock and flush the save whenever the app goes to the background.
