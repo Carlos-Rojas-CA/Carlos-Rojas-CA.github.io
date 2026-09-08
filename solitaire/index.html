@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<title>Solitaire</title>
+<meta name="description" content="Klondike solitaire. Free, offline, no ads.">
+<meta name="theme-color" content="#14653c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Solitaire">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<header class="topbar">
+  <button id="new-game" class="btn" type="button">New</button>
+  <button id="undo" class="btn" type="button" disabled>Undo</button>
+  <button id="auto-finish" class="btn btn-accent" type="button" hidden>Finish</button>
+  <div class="readout">
+    <span id="streak" title="Daily win streak">&#128293; 0</span>
+    <span id="timer">0:00</span>
+    <span id="moves" title="Moves">0</span>
+  </div>
+  <button id="stats-btn" class="btn" type="button" aria-label="Statistics">&#9432;</button>
+</header>
+
+<main id="board">
+  <div class="row row-top">
+    <div class="pile stock" data-pile="stock"></div>
+    <div class="pile waste" data-pile="waste"></div>
+    <div class="spacer"></div>
+    <div class="pile foundation" data-pile="foundation" data-index="0" data-glyph="&#9824;"></div>
+    <div class="pile foundation" data-pile="foundation" data-index="1" data-glyph="&#9829;"></div>
+    <div class="pile foundation" data-pile="foundation" data-index="2" data-glyph="&#9830;"></div>
+    <div class="pile foundation" data-pile="foundation" data-index="3" data-glyph="&#9827;"></div>
+  </div>
+  <div class="row row-tableau">
+    <div class="pile tableau" data-pile="tableau" data-index="0"></div>
+    <div class="pile tableau" data-pile="tableau" data-index="1"></div>
+    <div class="pile tableau" data-pile="tableau" data-index="2"></div>
+    <div class="pile tableau" data-pile="tableau" data-index="3"></div>
+    <div class="pile tableau" data-pile="tableau" data-index="4"></div>
+    <div class="pile tableau" data-pile="tableau" data-index="5"></div>
+    <div class="pile tableau" data-pile="tableau" data-index="6"></div>
+  </div>
+</main>
+
+<div id="win-banner" role="dialog" aria-modal="true" aria-live="polite" hidden>
+  <div class="win-card">
+    <h2>You win</h2>
+    <p id="win-summary"></p>
+    <button id="win-close" class="btn btn-accent" type="button">New game</button>
+  </div>
+</div>
+
+<dialog id="stats-dialog">
+  <h2>Statistics</h2>
+  <dl class="stats-grid">
+    <dt>Current streak</dt><dd id="stat-streak">0</dd>
+    <dt>Best streak</dt><dd id="stat-best-streak">0</dd>
+    <dt>Games won</dt><dd id="stat-won">0</dd>
+    <dt>Games played</dt><dd id="stat-played">0</dd>
+    <dt>Win rate</dt><dd id="stat-rate">--</dd>
+    <dt>Best time</dt><dd id="stat-time">--</dd>
+    <dt>Fewest moves</dt><dd id="stat-moves">--</dd>
+  </dl>
+  <button id="stats-close" class="btn" type="button">Close</button>
+</dialog>
+
+<script type="module" src="ui.js"></script>
+</body>
+</html>
