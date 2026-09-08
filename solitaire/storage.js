@@ -62,6 +62,7 @@ export function recordPlayed(stats) {
 
 const GAME_KEY = 'solitaire.v1.game';
 const STATS_KEY = 'solitaire.v1.stats';
+const PROBE_KEY = 'solitaire.v1.probe';
 const MAX_UNDO_SAVED = 50;
 
 export function makeMemoryStore() {
@@ -75,20 +76,36 @@ export function makeMemoryStore() {
 
 let fallbackStore = null;
 
-// Safari in private browsing exposes localStorage but throws on setItem, so we
-// probe rather than feature-detect, and degrade to memory instead of crashing.
+// Safari private browsing (and a full quota) exposes localStorage but throws on
+// setItem. Degrade writes to memory in that case -- but keep READING from
+// localStorage, because the user's real data is still sitting there intact and
+// falling back for reads would silently show them an empty streak.
 function defaultStore() {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('solitaire.v1.probe', '1');
-      localStorage.removeItem('solitaire.v1.probe');
-      return localStorage;
-    }
-  } catch (e) {
-    /* fall through to memory */
+  if (typeof localStorage === 'undefined') {
+    if (!fallbackStore) fallbackStore = makeMemoryStore();
+    return fallbackStore;
   }
-  if (!fallbackStore) fallbackStore = makeMemoryStore();
-  return fallbackStore;
+  try {
+    localStorage.setItem(PROBE_KEY, '1');
+    localStorage.removeItem(PROBE_KEY);
+    return localStorage;
+  } catch (e) {
+    if (!fallbackStore) fallbackStore = makeMemoryStore();
+    const memory = fallbackStore;
+    return {
+      getItem: (k) => {
+        const written = memory.getItem(k);
+        if (written !== null) return written;
+        try {
+          return localStorage.getItem(k);
+        } catch (err) {
+          return null;
+        }
+      },
+      setItem: (k, v) => memory.setItem(k, v),
+      removeItem: (k) => memory.removeItem(k),
+    };
+  }
 }
 
 function readJson(key, fallback, store) {

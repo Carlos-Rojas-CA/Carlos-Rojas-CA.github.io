@@ -204,6 +204,7 @@ let winRecorded = false;
 let animating = false;
 let confirmingNew = false;
 let confirmTimer = null;
+let saveHandle = null;
 
 function fmtTime(ms) {
   const total = Math.floor(ms / 1000);
@@ -244,6 +245,26 @@ function renderStreak() {
   el.streak.textContent = `\u{1F525} ${store.currentStreak(stats, store.todayStr())}`;
 }
 
+// The saved game runs to ~100KB with its undo tail, and localStorage writes
+// are synchronous. Coalesce bursts of taps into one write rather than paying
+// that cost per card.
+function scheduleSave() {
+  if (saveHandle !== null) clearTimeout(saveHandle);
+  saveHandle = setTimeout(() => {
+    saveHandle = null;
+    store.saveGame(state, undoStack);
+  }, 250);
+}
+
+// Anything that must not lose the last move -- backgrounding, a win -- flushes.
+function flushSave() {
+  if (saveHandle !== null) {
+    clearTimeout(saveHandle);
+    saveHandle = null;
+  }
+  store.saveGame(state, undoStack);
+}
+
 function afterChange() {
   selection = null;
   syncClock();
@@ -257,11 +278,12 @@ function afterChange() {
       onWin();
     }
   } else {
-    store.saveGame(state, undoStack);
+    scheduleSave();
   }
 }
 
 function onWin() {
+  if (saveHandle !== null) { clearTimeout(saveHandle); saveHandle = null; }
   stopTimer();
   const today = store.todayStr();
   stats = store.recordWin(stats, today, state.elapsedMs, state.moves);
@@ -358,11 +380,17 @@ function boot() {
   renderStreak();
   const saved = store.loadGame();
   if (saved) {
-    state = saved.state;
-    undoStack = saved.undo;
-    winRecorded = false;
-    startTimer();
-    afterChange();
+    try {
+      state = saved.state;
+      undoStack = saved.undo;
+      winRecorded = false;
+      startTimer();
+      afterChange();
+    } catch (e) {
+      // A structurally corrupt save must not take the app down with it.
+      store.clearGame();
+      deal();
+    }
   } else {
     deal();
   }
@@ -380,7 +408,7 @@ el.winClose.addEventListener('click', deal);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     stopTimer();
-    if (state && !state.won) store.saveGame(state, undoStack);
+    if (state && !state.won) flushSave();
   } else if (state && !state.won) {
     startTimer();
     renderStreak();

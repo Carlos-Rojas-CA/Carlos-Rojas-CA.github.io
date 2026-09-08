@@ -1,6 +1,6 @@
 // BUMP THIS on every change to any file listed in ASSETS, in the same commit.
 // A cache-first worker will otherwise keep serving the old build forever.
-const CACHE_VERSION = 'solitaire-v1';
+const CACHE_VERSION = 'solitaire-v2';
 
 const ASSETS = [
   './',
@@ -28,7 +28,11 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k)))
+        Promise.all(
+          keys
+            .filter((k) => k.startsWith('solitaire-') && k !== CACHE_VERSION)
+            .map((k) => caches.delete(k))
+        )
       )
       .then(() => self.clients.claim())
   );
