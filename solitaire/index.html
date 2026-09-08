@@ -15,17 +15,6 @@
 </head>
 <body>
 
-<header class="topbar">
-  <button id="new-game" class="btn" type="button">New</button>
-  <button id="undo" class="btn" type="button" disabled>Undo</button>
-  <button id="auto-finish" class="btn btn-accent" type="button" hidden>Finish</button>
-  <div class="readout">
-    <span id="streak" title="Daily win streak">&#128293; 0</span>
-    <span id="timer">0:00</span>
-    <span id="moves" title="Moves">0</span>
-  </div>
-  <button id="stats-btn" class="btn" type="button" aria-label="Statistics">&#9432;</button>
-</header>
 
 <main id="board">
   <div class="row row-top">
@@ -47,6 +36,18 @@
     <div class="pile tableau" data-pile="tableau" data-index="6"></div>
   </div>
 </main>
+
+<header class="topbar">
+  <button id="new-game" class="btn" type="button">New</button>
+  <button id="undo" class="btn" type="button" disabled>Undo</button>
+  <button id="auto-finish" class="btn btn-accent" type="button" hidden>Finish</button>
+  <div class="readout">
+    <span id="streak" title="Daily win streak">&#128293; 0</span>
+    <span id="timer">0:00</span>
+    <span id="moves" title="Moves">0</span>
+  </div>
+  <button id="stats-btn" class="btn" type="button" aria-label="Statistics">&#9432;</button>
+</header>
 
 <div id="win-banner" role="dialog" aria-modal="true" aria-live="polite" hidden>
   <div class="win-card">
