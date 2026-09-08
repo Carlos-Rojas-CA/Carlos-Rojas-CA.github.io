@@ -80,12 +80,16 @@ let fallbackStore = null;
 // setItem. Degrade writes to memory in that case -- but keep READING from
 // localStorage, because the user's real data is still sitting there intact and
 // falling back for reads would silently show them an empty streak.
+//
+// Every touch of `localStorage` stays inside the try: in storage-partitioned or
+// cookie-blocked contexts the accessor itself throws on evaluation, so even
+// `typeof localStorage` must be guarded.
 function defaultStore() {
-  if (typeof localStorage === 'undefined') {
-    if (!fallbackStore) fallbackStore = makeMemoryStore();
-    return fallbackStore;
-  }
   try {
+    if (typeof localStorage === 'undefined') {
+      if (!fallbackStore) fallbackStore = makeMemoryStore();
+      return fallbackStore;
+    }
     localStorage.setItem(PROBE_KEY, '1');
     localStorage.removeItem(PROBE_KEY);
     return localStorage;
@@ -93,6 +97,8 @@ function defaultStore() {
     if (!fallbackStore) fallbackStore = makeMemoryStore();
     const memory = fallbackStore;
     return {
+      // Memory first: a value written since the fallback engaged must win over
+      // the stale copy still on disk.
       getItem: (k) => {
         const written = memory.getItem(k);
         if (written !== null) return written;
@@ -103,7 +109,16 @@ function defaultStore() {
         }
       },
       setItem: (k, v) => memory.setItem(k, v),
-      removeItem: (k) => memory.removeItem(k),
+      removeItem: (k) => {
+        memory.removeItem(k);
+        // Best-effort: without this, clearGame() cannot evict a stale on-disk
+        // game and a finished game would resume on the next reload.
+        try {
+          localStorage.removeItem(k);
+        } catch (err) {
+          /* writes are already known-broken; nothing more to do */
+        }
+      },
     };
   }
 }
